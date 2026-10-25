@@ -1,0 +1,149 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+  <meta name="theme-color" content="#061b24" />
+  <title>RIFTBOUND — Escape the Veil</title>
+  <link rel="stylesheet" href="./client/style.css" />
+</head>
+<body>
+  <canvas id="world" aria-label="3D open world exploration"></canvas>
+  <div class="vignette"></div><div class="grain"></div>
+  <header class="topbar">
+    <div class="wordmark"><span class="logo-icon">✧</span><div><strong>RIFT<span>BOUND</span></strong><small>ESCAPE THE VEIL</small></div></div>
+    <div class="mission"><span class="overline">ESCAPE · STEALTH · SKILLS</span><strong id="missionTitle">THE SHATTERED REALM</strong><small id="missionSub">One time portal · eight-minute escape race</small></div>
+    <div class="right-top"><span class="pill"><span class="led"></span><span id="roomBadge">NO ROOM</span></span><span class="fps" id="fps">WORLD INITIALIZING</span>
+      <div class="graphics-menu"><label for="graphicsQuality">VISUAL QUALITY</label>
+       <select id="graphicsQuality" aria-label="3D graphics quality"><option value="cinematic">✦ CINEMATIC</option><option value="balanced" selected>◈ BALANCED</option><option value="performance">⚡ PERFORMANCE</option></select>
+       <small id="graphicsHint">BALANCED MODE ACTIVE</small></div></div>
+  </header>
+  <aside class="zone-panel">
+    <span class="eyebrow"><i></i> THE SHATTERED REALM · SECTOR 01</span>
+    <h1>THE VEIL<br/>IS <em>BREAKING.</em></h1>
+    <p>A mysterious fantasy world with one glowing time-travel portal. Your path home changes every round. Outrun the monster, survive rival sabotage, and escape before time runs out.</p>
+    <div class="zone-features"><span>◆ 450 × 450 m</span><span>◆ 3 BRIDGES</span><span>◆ 20+ BUILDINGS</span><span>◆ 6 CHAOS SKILLS</span></div>
+    <div class="progress"><div class="progress-head"><span>CHAOS & ESCAPE</span><b>STEP 18</b></div><div class="progress-line"><span></span></div><small>Cross rivers · follow the compass · escape before 08:00</small></div>
+  </aside>
+  <aside class="radar" aria-label="Minimap"><div class="radar-head"><span>◈ &nbsp; VALLEY RADAR</span><b>LIVE</b></div><canvas id="minimap" width="256" height="256"></canvas><div class="radar-footer"><span><i></i> YOU</span><span id="coords">X 0 · Z 0</span><span>N ↑</span></div><div class="radar-key"><span><i class="pin-self"></i> YOU</span><span><i class="pin-runner"></i> REVEALED</span><span><i class="pin-hunter"></i> HUNTER</span></div></aside>
+  <aside id="radarShop" class="radar-shop" hidden aria-label="Coin wallet and location reveal shop">
+    <div class="radar-shop-header"><span>◈ &nbsp; TRACKING</span><b id="revealCount">0 ACTIVE</b></div>
+    <div class="wallet-row"><div><small>YOUR COINS</small><strong>◈ <span id="coinBalance">300</span></strong></div><div><small>COST / REVEAL</small><strong><span id="radarPrice">20</span> <span class="small-currency">COINS</span></strong></div></div>
+    <p class="radar-warning"><b>⚠ TWO-WAY TRACKING</b> A purchase reveals their live location on your minimap for <span id="radarDuration">10</span>s. They also see your live location for the same duration. Only the purchaser pays.</p>
+    <div id="radarTargets" class="radar-target-list" aria-label="Players available to reveal"></div>
+    <small id="radarEmpty" hidden>Waiting for other players…</small>
+  </aside>
+  <aside id="shatteredCompassHUD" class="shattered-compass" hidden aria-label="Shattered Compass guidance">
+    <span>⟡ SHATTERED COMPASS</span>
+    <div class="compass-dial"><strong id="compassArrow">?</strong><div><b id="compassStrength">READY TO ACTIVATE</b><small id="compassRoute">Turn toward ↑, then run forward.</small><div class="compass-bars" id="compassBars" aria-label="Compass signal strength"><i></i><i></i><i></i></div></div></div>
+    <small id="compassWarning">When used, the hunter tracks you for 20 seconds.</small>
+    <button type="button" id="compassAction" aria-label="Activate Shattered Compass">⟡ USE COMPASS [ G ] · 75 COINS</button>
+    <small class="compass-help">Signal: FAINT → GROWING → STRONG as you get closer. No exact portal coordinates.</small>
+  </aside>
+  <aside id="powerHUD" class="power-hud" hidden aria-label="Your six strategically assigned skills">
+    <div class="power-top"><span>✦ &nbsp; YOUR CHAOS LOADOUT</span><span id="skillWallet">◈ 300</span></div>
+    <div id="skillSlots" class="skill-slots" aria-label="Select one of your six random skills"></div>
+    <div class="power-identity"><span id="powerIcon">⚡</span><div><strong id="powerName">SKILL</strong><small id="powerDescription"></small><small id="skillCost">◈ 50 COINS</small></div></div>
+    <div id="powerTargetRow" class="power-target-row"><label for="powerTarget">TARGET PLAYER</label><select id="powerTarget"></select></div>
+    <select id="powerSpeed" hidden aria-label="Choose target movement speed"><option value="0.25">25% SPEED</option><option value="0.5" selected>50% SPEED</option><option value="1.5">150% SPEED</option></select>
+    <select id="powerTier" hidden aria-label="Legacy tier"><option value="basic">BASIC</option></select>
+    <button id="castPower" class="power-cast">USE SKILL [ Q ]</button><div class="power-timer"><span id="powerProgress"></span></div>
+    <button id="collectPower" class="power-collect" hidden>⇄ COLLECT SWAP [ R ]</button>
+    <small id="powerEffects" class="power-effects">20s GLOBAL COOLDOWN</small>
+    <small id="skillHint" class="power-tip">1–6 SELECT · Q USE · R COLLECT SWAP</small>
+  </aside>
+  <button id="musicToggle" type="button" class="music-toggle" aria-label="Toggle atmospheric background music">♫ MUSIC OFF</button>
+  <div id="cameraControls" class="camera-controls" aria-label="Camera and vehicle controls">
+    <button id="cameraMode" type="button">◉ THIRD PERSON [ V ]</button>
+    <button id="overviewButton" type="button">OVERVIEW [ O ]</button>
+    <button id="vehicleButton" type="button">ENTER CAR [ E ]</button>
+  </div>
+  <div id="movePad" class="move-pad" hidden><div id="moveKnob" class="move-knob"></div></div>
+  <button id="toggleHud" class="hud-toggle" aria-label="Toggle skill controls">SKILLS <span>▾</span></button>
+  <div class="landmark" id="landmark">✧ &nbsp; ENTER THE VALLEY &nbsp; ✧</div>
+  <div class="center-dot">+</div>
+  <div id="hunterReticle" class="hunter-reticle" hidden aria-hidden="true"><div class="scope-ring"><i></i><i></i><i></i><i></i><b>+</b></div><small>HUNTER TARGETING</small></div>
+  <section id="combatHUD" class="combat-hud" hidden><strong id="blasterState" class="visually-hidden">HUNTER BLASTER READY</strong><button id="scopeButton" class="scope-button" type="button" hidden>◉ SCOPE [ B ]</button><button id="fireButton" class="fire-button" hidden>◎ FIRE [ H ]</button></section>
+  <section id="knockoutOverlay" class="knockout-overlay" hidden role="status" aria-live="polite">
+    <div class="knockout-card"><strong>YOU WERE CAUGHT · SPECTATING</strong><span id="knockoutBy">Watching a teammate</span>
+      <div class="spectator-row"><button id="spectatePrev" aria-label="Previous player">‹</button>
+        <span id="spectateName">FOLLOWING PLAYER</span><button id="spectateView" aria-label="Toggle first or third person spectator camera">TPP</button><button id="spectateNext" aria-label="Next player">›</button></div>
+      <small>PLAYER POV · [ / ] TO SWITCH · RESPAWN IN <span id="knockoutTimer">30</span>s</small>
+    </div>
+  </section>
+  <footer class="bottombar">
+    <div class="keyguide"><div class="keys"><kbd>W</kbd><div><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd></div></div><span>MOVE</span><kbd>SPACE</kbd><span>JUMP</span><kbd>SHIFT</kbd><span>SPRINT</span><kbd>E</kbd><span>CAR</span><kbd>C</kbd><span>CLIMB</span><kbd>1–6</kbd><span>SKILLS</span><kbd>Q</kbd><span>USE</span><kbd>R</kbd><span>SWAP PICKUP</span><kbd>H</kbd><span>FIRE</span><span class="secondary-control">DRAG TO LOOK · SCROLL TO ZOOM</span></div>
+    <div class="player-stats"><div><small>SESSION</small><strong id="sessionState">CREATE A ROOM TO BEGIN</strong></div><div><small>PLAYER COUNT</small><strong id="playerTotal">0 / 0</strong></div><div><small>LOCATION</small><strong id="area">CENTRAL VALLEY</strong></div></div>
+  </footer>
+  <div id="networkIndicator" class="network-indicator" role="status" aria-live="polite" hidden>◌ CONNECTION PAUSED · RESTORING MATCH…</div>
+  <aside id="effectTimerHUD" class="effect-timer-hud" hidden aria-label="Your active movement effect">
+    <div class="effect-timer-label"><span id="effectTimerIcon">❄</span><strong id="effectTimerName">FROZEN</strong><b id="effectTimerSeconds" aria-label="Seconds remaining">0s</b></div>
+    <div class="effect-timer-track"><span id="effectTimerFill"></span></div>
+    <small id="effectTimerHelp">Controls return when the timer reaches zero.</small>
+  </aside>
+  <div id="crossNotice" class="cross-notice" aria-live="polite"></div><div id="gameToasts" class="game-toasts" aria-live="polite" aria-label="Recent game notifications"></div>
+  <aside id="squadPanel" class="squad-panel"><div class="radar-head"><span>◈ &nbsp; YOUR SQUAD</span><b>LIVE</b></div><div id="squadList"></div><button id="leaveGame" class="quiet-leave">LEAVE ROOM ↗</button></aside>
+  <div id="nameTags" class="name-tags" aria-hidden="true"></div>
+  <section id="roleHUD" class="role-hud" hidden aria-live="polite">
+    <div class="role-topline"><span id="roleBadge">RUNNER</span><span>TIME LEFT <b id="matchTimer">08:00</b></span></div>
+    <strong id="roleObjective">FIND THE SECRET GATE</strong>
+    <small id="objectiveHint">Search the realm for a giant shimmering time-travel portal before time runs out.</small>
+  </section>
+  <section id="portalNotice" class="portal-notice" hidden role="status" aria-live="polite"><span>✧ PORTAL RESONANCE DETECTED ✧</span><strong id="portalNoticeTitle">YOU ARE NEAR THE DOOR!</strong><small id="portalNoticeHint">Follow the brilliant blue light to escape.</small></section>
+  <button id="escapeButton" class="escape-button" hidden aria-label="Interact with nearby secret exit">✧ THE DOOR IS NEAR</button>
+  <section id="roleIntro" class="match-modal" hidden role="dialog" aria-modal="true" aria-labelledby="roleHeading">
+    <div class="modal-pane"><span class="modal-eyebrow">✧ A NEW ROUND BEGINS ✧</span><div id="roleIcon" class="role-big-icon">✦</div>
+      <h2 id="roleHeading">YOU ARE A RUNNER</h2><p id="roleDescription"></p>
+      <div class="round-howto"><b>HOW TO PLAY</b><p id="roundInstructions"></p>
+        <b id="roundSkillTitle">YOUR POWERS — CHOOSE 1–6, USE Q</b><div id="roundSkillGuide" class="round-skill-guide"></div>
+        <p class="round-notifications">NOTIFICATIONS: Skill success and attacks appear as pop-up messages; the portal warning appears near the exit. You can also watch the power status panel.</p>
+      </div>
+      <button id="dismissRole" class="modal-action">I UNDERSTAND · START PLAYING →</button><small>WASD to move · SPACE to jump · E for car · C to climb · F to escape</small>
+    </div>
+  </section>
+  <section id="roundEnd" class="match-modal" hidden role="dialog" aria-modal="true" aria-labelledby="endHeading">
+    <div class="modal-pane"><span class="modal-eyebrow">✧ THE ROUND IS OVER ✧</span><div id="endSymbol" class="role-big-icon">👑</div><div id="winnerPodium" class="winner-podium" hidden>
+        <span class="podium-crown">♛</span><div id="winnerAvatar" class="avatar-figure podium-avatar" aria-label="Winning character">
+          <i class="avatar-hair"></i><i class="avatar-head"></i><i class="avatar-body"></i><i class="avatar-arm arm-left"></i>
+          <i class="avatar-arm arm-right"></i><i class="avatar-leg leg-left"></i><i class="avatar-leg leg-right"></i>
+        </div><span class="podium-laurels">✦ CHAMPION ✦</span></div>
+        <div id="winnerCrown" class="winner-crown" hidden>♛</div><strong id="winnerName" class="winner-name" hidden></strong><div id="endReason" class="end-reason"></div>
+      <h2 id="endHeading">VICTORY</h2><p id="endDescription"></p>
+      <button id="rematchButton" class="modal-action">PLAY ANOTHER ROUND ↻</button><p id="endWaiting" hidden>Waiting for the host…</p>
+      <button id="endLeave" class="modal-secondary">LEAVE ROOM</button>
+    </div>
+  </section>
+  <section id="startScreen" class="intro">
+    <div class="lobby-scene-note" aria-hidden="true"><span class="scene-rune">⟡</span><div><small>THE PORTAL AWAITS</small><strong>FIND THE WAY HOME</strong><span>EXPLORE THE REALM · OUTRUN THE HUNTER</span></div></div>
+    <div class="intro-card lobby-card">
+      <div class="lobby-overline"><span class="intro-mark">✳</span><span>RIFTBOUND · ESCAPE THE VEIL</span><span id="netStatus">○ CONNECTING…</span></div>
+      <div class="lobby-brand" aria-label="Riftbound"><span class="lobby-brand-mark">✧</span><span>RIFT<b>BOUND</b></span></div>
+      <div class="lobby-kicker"><span class="lobby-kicker-orb">◉</span> SURVIVE THE RIFT <span class="lobby-kicker-line"></span> 08:00 TO ESCAPE</div>
+      <h2>THE WORLD IS <em>NOT YOURS.</em></h2>
+      <p>A beautiful world with one terrible rule: <b>only the first runner through the hidden portal escapes.</b> Outplay the hunter, survive your friends’ sabotage, and break through the veil before the eight-minute countdown ends.</p>
+      <div class="lobby-pills" aria-label="Game features"><span>⌛ 8-MINUTE RACE</span><span>◈ 300 COINS</span><span>✦ 6 STRATEGIC SKILLS</span><span>◉ 1 WAY HOME</span></div>
+      <div class="lobby-rule"><span class="rule-icon">⟡</span> <span>YOUR ONLY WAY HOME IS A DOOR THAT MOVES EVERY ROUND.</span></div>
+      <div id="lobbyError" role="alert" aria-live="polite"></div>
+      <div id="entryView">
+        <div class="identity"><label for="playerName">YOUR EXPLORER NAME</label><input id="playerName" maxlength="16" placeholder="Name your character" autocomplete="nickname" value="Wanderer" /><label>CHOOSE YOUR CHARACTER</label>
+        <div class="character-selection"><div class="character-preview"><div id="selectedAvatar" class="avatar-figure" aria-label="Character preview"><i class="avatar-hair"></i><i class="avatar-head"></i><i class="avatar-body"></i><i class="avatar-arm arm-left"></i><i class="avatar-arm arm-right"></i><i class="avatar-leg leg-left"></i><i class="avatar-leg leg-right"></i></div><span id="avatarLabel">MINT EXPLORER</span></div><div><div id="skinPicker" class="skin-picker" role="group" aria-label="Choose character color"></div><small>Pick your original avatar. All nine outfits now have animated arms and legs in-game.</small></div></div></div>
+        <div class="lobby-options">
+          <div class="option"><span class="option-number">01 / HOST</span><h3>CREATE A WORLD</h3><p>Choose how many people can join. You're the room host.</p><label for="roomCapacity">MAX PLAYERS</label><select id="roomCapacity"><option value="2">2 explorers</option><option value="3">3 explorers</option><option value="4" selected>4 explorers</option><option value="5">5 explorers</option><option value="6">6 explorers</option><option value="7">7 explorers</option><option value="8">8 explorers</option><option value="9">9 explorers</option><option value="10">10 explorers</option><option value="11">11 explorers</option><option value="12">12 explorers</option></select><button id="createRoom" class="primary-action">CREATE PRIVATE ROOM ↗</button></div>
+          <div class="option"><span class="option-number">02 / JOIN</span><h3>JOIN YOUR FRIENDS</h3><p>Enter the five-character code shared by the host.</p><label for="joinCode">ROOM INVITE CODE</label><input id="joinCode" placeholder="EX: Q7MTA" maxlength="5" autocapitalize="characters" spellcheck="false" /><button id="joinRoom" class="primary-action secondary-action">JOIN EXISTING ROOM ↗</button></div>
+        </div>
+      </div>
+      <div id="roomView" hidden>
+        <div class="invite"><div><span>YOUR PRIVATE ROOM CODE</span><strong id="roomCode">-----</strong></div><button id="copyCode" class="copy-code">COPY INVITE LINK <b>↗</b></button></div>
+        <div class="waiting-head"><b id="lobbyCount">1 OF 4 CONNECTED</b><span>WAITING LOBBY</span></div>
+        <div id="lobbyRoster" class="lobby-roster"></div>
+        <p id="hostHint" class="host-hint"></p>
+        <div class="room-actions"><button id="launchRoom" class="primary-action" disabled>WAITING FOR 2 PLAYERS</button><button id="leaveRoom" class="quiet-leave">LEAVE ROOM</button></div>
+      </div>
+      <small>Players need to visit the same game server (localhost or the host's LAN address). Every round lasts eight minutes. First runner to enter the glowing time portal wins; if none escape, the hunter wins. Every runner always has Shattered Compass and five balanced random skills. The compass exposes your location to the hunter. The monster has no skills. Ground crystals grant Swap.</small>
+    </div>
+  </section>
+  <div class="touch" aria-label="Touch game controls"><div class="touch-buttons"><button id="touchJump">JUMP</button><button id="touchClimb">CLIMB</button><button id="touchSprint">RUN</button><button id="touchFire">FIRE</button></div></div>
+  <div id="error" class="error" hidden></div>
+  <script type="module" src="./client/main.js"></script>
+</body>
+</html>

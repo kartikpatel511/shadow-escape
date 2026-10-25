@@ -1,0 +1,30 @@
+# Node and package managers
+node_modules/
+.npm/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# Local credentials/configuration (do not commit secrets)
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Editors, operating systems, cache, and test output
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+coverage/
+.nyc_output/
+*.log
+.cache/
+.tmp/
+tmp/
+
+# Local build/archive artifacts
+*.zip
+*.tgz

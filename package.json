@@ -1,0 +1,15 @@
+{
+  "name": "riftbound-escape-the-veil",
+  "version": "1.8.0",
+  "private": true,
+  "type": "module",
+  "description": "RIFTBOUND: Escape the Veil — multiplayer portal race with rebalanced sabotage, animated characters and cinematic landing page",
+  "scripts": {
+    "start": "node server.mjs",
+    "test": "node --test tests/*.test.js",
+    "check": "node --check client/renderer.js && node --check client/graphics-config.js && node --check client/main.js && node --check client/power-ui.js && node --check client/lobby.js && node --check shared/skills.js && node --check shared/controls.js && node --check server.mjs && node --check server/rooms.mjs && node --check server/round.mjs && node --check server/radar.mjs && node --check server/combat.mjs && node --check server/powers.mjs && node --check server/websocket.mjs && npm test"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

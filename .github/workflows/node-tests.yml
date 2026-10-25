@@ -1,0 +1,19 @@
+name: Node.js tests
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out the project
+        uses: actions/checkout@v4
+      - name: Use Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Verify code and automated gameplay tests
+        run: npm run check

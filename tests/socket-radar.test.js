@@ -1,0 +1,22 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {RoomManager} from '../server/rooms.mjs';
+const sock=()=>({readyState:1,messages:[],send(message){this.messages.push(JSON.parse(message));}});
+const latest=(s,t)=>s.messages.findLast(m=>m.type===t);
+test('old unrestricted radar purchase is rejected: location reveal requires owning an assigned skill',()=>{
+ const mgr=new RoomManager(),a=sock(),b=sock();
+ mgr.handle(a,{type:'create',name:'Host',capacity:2});const code=latest(a,'joined').room.code;
+ mgr.handle(b,{type:'join',code,name:'Guest'});mgr.handle(a,{type:'start'});
+ const room=mgr.rooms.get(code),players=[...room.players.values()];
+ const caster=players.find(p=>p.role==='runner'),target=players.find(p=>p.id!==caster.id);
+ const casterSock=caster.id===players[0].id?a:b,targetSock=casterSock===a?b:a;
+ mgr.handle(casterSock,{type:'reveal',targetId:target.id});
+ assert.match(latest(casterSock,'error').message,/assigned/i);assert.equal(caster.coins,300);
+ caster.loadout[0]='see';caster.powerReadyAt=0;
+ mgr.handle(casterSock,{type:'power',ability:'see',targetId:target.id});
+ assert.equal(latest(casterSock,'powerResult').cost,20);
+ assert.equal(latest(targetSock,'radarAlert').buyerName,caster.name);
+ assert.equal(latest(casterSock,'snapshot').radar.contacts[0].id,target.id);
+ assert.equal(latest(targetSock,'snapshot').radar.contacts[0].id,caster.id);
+ assert.equal(caster.coins,280);
+});

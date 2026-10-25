@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+<title>Shadow Escape – Standalone Three.js r128 Controller</title>
+<style>
+html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#091a25;color:#e7faf4;font-family:system-ui,sans-serif;touch-action:none}
+canvas#view{display:block;width:100%;height:100%;touch-action:none}#hud{position:fixed;top:14px;left:14px;z-index:2;display:flex;gap:8px;flex-wrap:wrap;max-width:75vw}
+button{background:#122637dd;border:1px solid #90c9cf;color:#fff;padding:10px 13px;border-radius:6px;cursor:pointer;font-weight:bold}
+#minimap{position:fixed;top:14px;right:14px;border:2px solid #bce9d5;border-radius:50%;background:#203a39;width:150px;height:150px;z-index:3}
+#help{position:fixed;bottom:12px;left:50%;transform:translateX(-50%);background:#0b1d2ad9;padding:9px 17px;border-radius:9px;font-size:12px;text-align:center;max-width:90vw;pointer-events:none}
+#joy{position:fixed;left:-200px;top:-200px;display:none;width:90px;height:90px;border-radius:50%;border:2px solid #b4eada;background:#15324ca0;z-index:4;transform:translate(-50%,-50%);pointer-events:none}
+#knob{position:absolute;left:50%;top:50%;width:30px;height:30px;transform:translate(-50%,-50%);border-radius:50%;background:#d5ffdf}
+@media(max-width:640px){#hud{max-width:calc(100vw - 180px)}button{font-size:10px;padding:8px 9px}#help{font-size:10px}}
+</style></head><body>
+<canvas id="view"></canvas><canvas id="minimap" width="150" height="150"></canvas>
+<div id="hud"><button id="viewButton">THIRD PERSON</button><button id="modeButton">OVERVIEW</button><button id="carButton">E · ENTER CAR</button></div>
+<div id="joy"><div id="knob"></div></div>
+<div id="help">WASD move / steer · arrows ↑ ↓ move · ← → turn · Shift run · drag look · wheel zoom · E vehicle · touch: left joystick / right look</div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+'use strict';
+// Exact movement / camera parameters from the controller specification.
+const WALK=4.5,RUN=9,TURN=1.8,MOUSE_YAW=.005,MOUSE_PITCH=.004,MIN_PITCH=-.45,MAX_PITCH=1.2;
+const CAMERA_LERP=9,EYE=1.65,THIRD_DIST=6,FIRST_DIST=.01,MIN_DIST=.01,MAX_DIST=14;
+const OVER_RADIUS=170,OVER_THETA=.8,OVER_PHI=1,OVER_THETA_DRAG=.006,OVER_PHI_DRAG=.005;
+const ENTER_DIST=6,EXIT_OFFSET=2.8,ENGINE=20,REVERSE=8,ACCEL_RESPONSE=1.2,STEER_SPEED=1.6,MAX_DT=.05;
+const JOY_SIZE=90,JOY_KNOB=30,JOY_TRAVEL=45,JOY_RUN=.95,START_Z=52;
+const clamp=(n,a,b)=>Math.max(a,Math.min(b,n)), wrap=a=>Math.atan2(Math.sin(a),Math.cos(a));
+const view=document.querySelector('#view'),map=document.querySelector('#minimap'),ctx=map.getContext('2d');
+const scene=new THREE.Scene();scene.background=new THREE.Color(0x152d41);scene.fog=new THREE.FogExp2(0x1d3948,.004);
+const renderer=new THREE.WebGLRenderer({canvas:view,antialias:true});renderer.setPixelRatio(Math.min(2,devicePixelRatio));renderer.shadowMap.enabled=true;
+const camera=new THREE.PerspectiveCamera(65,1,.1,1000),lookTarget=new THREE.Vector3(0,6,0);
+scene.add(new THREE.HemisphereLight(0xd6eaff,0x183924,1.4));const sun=new THREE.DirectionalLight(0xffe4b0,1.5);sun.position.set(-80,135,90);sun.castShadow=true;scene.add(sun);
+const pl={x:0,z:START_Z,y:1,yaw:Math.PI,pit:.35,dist:THIRD_DIST,face:Math.PI},car={x:7,z:START_Z,yaw:0,v:0};
+let first=false,overview=false,driving=false,theta=OVER_THETA,phi=OVER_PHI,radius=OVER_RADIUS,t=0;
+const key=new Set(),joy={right:0,forward:0};
+const obstacles=[[-36,30,5],[-24,-50,5],[35,75,5],[70,-45,6],[110,80,8],[-100,90,7]];
+const water=(x,z)=>Math.hypot(x-45,z+22)<27;
+function terrain(x,z){return water(x,z)?0:1+.12*Math.sin(x*.025)*Math.cos(z*.03);}
+function allowed(x,z){return Math.abs(x)<220&&Math.abs(z)<220&&terrain(x,z)>.3&&obstacles.every(([cx,cz,r])=>Math.hypot(x-cx,z-cz)>r);}
+const mat=(c)=>new THREE.MeshStandardMaterial({color:c,roughness:.77});
+const ground=new THREE.Mesh(new THREE.PlaneGeometry(450,450,32,32),mat(0x335c47));ground.rotation.x=-Math.PI/2;ground.position.y=.75;ground.receiveShadow=true;scene.add(ground);
+const lake=new THREE.Mesh(new THREE.CircleGeometry(27,72),new THREE.MeshStandardMaterial({color:0x287b96,roughness:.23,metalness:.4}));lake.rotation.x=-Math.PI/2;lake.position.set(45,.8,-22);scene.add(lake);
+function box(w,h,d,color){const obj=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),mat(color));obj.castShadow=true;obj.receiveShadow=true;return obj;}
+for(const [x,z,r] of obstacles){const rock=new THREE.Mesh(new THREE.CylinderGeometry(r,r,9,11),mat(0x3c5051));rock.position.set(x,4.5,z);rock.castShadow=true;scene.add(rock);}
+for(let i=0;i<65;i++){const x=Math.sin(i*53)*205,z=Math.cos(i*77)*205;if(!allowed(x,z))continue;const tree=new THREE.Mesh(new THREE.ConeGeometry(3+(i%3),11+(i%5),7),mat(i%2?0x173d37:0x245149));tree.position.set(x,6,z);scene.add(tree);}
+const avatar=new THREE.Group();scene.add(avatar);
+const torso=box(.85,1.12,.5,0x6ee6c5);torso.position.y=1.2;avatar.add(torso);
+const head=new THREE.Mesh(new THREE.SphereGeometry(.36,12,10),mat(0xf3b78d));head.position.y=2.03;avatar.add(head);
+const arms=[],legs=[];
+for(const side of [-1,1]){const arm=box(.24,.85,.24,0x5ab6ae);arm.position.set(side*.65,1.23,0);avatar.add(arm);arms.push(arm);
+ const leg=box(.29,.85,.35,0x263a4d);leg.position.set(side*.23,.32,0);avatar.add(leg);legs.push(leg);}
+const vehicleMesh=new THREE.Group();scene.add(vehicleMesh);const body=box(2.8,.9,4.4,0x39a0ae);body.position.y=.8;vehicleMesh.add(body);
+const canopy=box(2.1,1.05,2,0x183443);canopy.position.y=1.75;vehicleMesh.add(canopy);
+for(const x of [-1.4,1.4])for(const z of [-1.45,1.45]){const wheel=new THREE.Mesh(new THREE.CylinderGeometry(.65,.65,.34,12),mat(0x171c24));wheel.rotation.z=Math.PI/2;wheel.position.set(x,.45,z);vehicleMesh.add(wheel);}
+function resize(){const w=innerWidth,h=innerHeight;if(view.width!==Math.floor(w*devicePixelRatio)||view.height!==Math.floor(h*devicePixelRatio))renderer.setSize(w,h,false);camera.aspect=w/h;camera.updateProjectionMatrix();}addEventListener('resize',resize);resize();
+function toggleView(){first=!first;pl.dist=first?FIRST_DIST:THIRD_DIST;document.querySelector('#viewButton').textContent=first?'FIRST PERSON':'THIRD PERSON';}
+function toggleMode(){overview=!overview;document.querySelector('#modeButton').textContent=overview?'BACK TO WALK':'OVERVIEW';}
+function toggleCar(){if(overview)return;if(driving){const rx=-Math.cos(car.yaw),rz=Math.sin(car.yaw),x=car.x+rx*EXIT_OFFSET,z=car.z+rz*EXIT_OFFSET;
+ if(!allowed(x,z))return;driving=false;pl.x=x;pl.z=z;pl.y=terrain(x,z);}else if(Math.hypot(pl.x-car.x,pl.z-car.z)<ENTER_DIST){driving=true;pl.dist=Math.max(pl.dist,9);first=false;}}
+document.querySelector('#viewButton').onclick=toggleView;document.querySelector('#modeButton').onclick=toggleMode;document.querySelector('#carButton').onclick=toggleCar;
+addEventListener('keydown',e=>{if(['ArrowUp','ArrowDown','ArrowLeft','ArrowRight',' '].includes(e.key))e.preventDefault();const k=e.key.toLowerCase();if(k==='e'&&!e.repeat)toggleCar();key.add(k);});
+addEventListener('keyup',e=>key.delete(e.key.toLowerCase()));addEventListener('blur',()=>key.clear());view.addEventListener('contextmenu',e=>e.preventDefault());
+const joyEl=document.querySelector('#joy'),knob=document.querySelector('#knob');let joystickId=null,origin=null,lookId=null,lastPointer=null;
+function setJoy(e){const dx=e.clientX-origin.x,dy=e.clientY-origin.y,mag=Math.max(1,Math.hypot(dx,dy)),scale=Math.min(1,JOY_TRAVEL/mag);
+ joy.right=dx*scale/JOY_TRAVEL;joy.forward=-dy*scale/JOY_TRAVEL;
+ knob.style.transform=`translate(calc(-50% + ${dx*scale}px),calc(-50% + ${dy*scale}px))`;}
+view.addEventListener('pointerdown',e=>{view.setPointerCapture(e.pointerId);if(e.pointerType!=='mouse'&&!overview&&e.clientX<innerWidth*.45){joystickId=e.pointerId;origin={x:e.clientX,y:e.clientY};joyEl.style.cssText=`display:block;left:${e.clientX}px;top:${e.clientY}px`;setJoy(e);}
+ else {lookId=e.pointerId;lastPointer=[e.clientX,e.clientY];}});
+view.addEventListener('pointermove',e=>{if(e.pointerId===joystickId){setJoy(e);return;}if(e.pointerId!==lookId||!lastPointer)return;
+ const dx=e.clientX-lastPointer[0],dy=e.clientY-lastPointer[1];lastPointer=[e.clientX,e.clientY];
+ if(overview){theta-=dx*OVER_THETA_DRAG;phi=clamp(phi-dy*OVER_PHI_DRAG,.15,1.45);}
+ else {pl.yaw-=dx*MOUSE_YAW;pl.pit=clamp(pl.pit+dy*MOUSE_PITCH,MIN_PITCH,MAX_PITCH);}});
+function pointerEnd(e){if(e.pointerId===joystickId){joystickId=null;joy.right=joy.forward=0;joyEl.style.display='none';}if(e.pointerId===lookId){lookId=null;lastPointer=null;}}
+view.addEventListener('pointerup',pointerEnd);view.addEventListener('pointercancel',pointerEnd);
+view.addEventListener('wheel',e=>{e.preventDefault();if(overview)radius=clamp(radius*(1+e.deltaY*.001),30,420);else pl.dist=clamp(pl.dist*(1+e.deltaY*.001),MIN_DIST,MAX_DIST);},{passive:false});
+function axes(){let a=Number(key.has('w')||key.has('arrowup'))-Number(key.has('s')||key.has('arrowdown'))+joy.forward;
+ let s=Number(key.has('d'))-Number(key.has('a'))+joy.right;
+ a=clamp(a,-1,1);s=clamp(s,-1,1);const d=Math.hypot(a,s);if(d>1){a/=d;s/=d;}return {a,s};}
+function step(dt){if(overview)return;const {a,s}=axes();
+ if(driving){const st=clamp(Number(key.has('a'))-Number(key.has('d'))-joy.right,-1,1);
+  car.v+=(clamp(a,-1,1)*(a>0?ENGINE:REVERSE)-car.v)*dt*ACCEL_RESPONSE;
+  car.yaw+=st*dt*STEER_SPEED*clamp(car.v/6,-1,1);
+  const nx=car.x+Math.sin(car.yaw)*car.v*dt,nz=car.z+Math.cos(car.yaw)*car.v*dt;
+  if(allowed(nx,nz)){car.x=nx;car.z=nz;}else car.v*=-.3;
+  pl.x=car.x;pl.z=car.z;pl.y=terrain(car.x,car.z);pl.yaw+=wrap(car.yaw-pl.yaw)*Math.min(1,dt*3);pl.dist=Math.max(pl.dist,9);return;
+ }
+ pl.yaw+=(Number(key.has('arrowleft'))-Number(key.has('arrowright')))*dt*TURN;
+ const speed=key.has('shift')||Math.hypot(joy.right,joy.forward)>JOY_RUN?RUN:WALK;
+ const vx=(Math.sin(pl.yaw)*a-Math.cos(pl.yaw)*s)*speed*dt;
+ const vz=(Math.cos(pl.yaw)*a+Math.sin(pl.yaw)*s)*speed*dt;
+ if(allowed(pl.x+vx,pl.z))pl.x+=vx;
+ if(allowed(pl.x,pl.z+vz))pl.z+=vz;
+ const groundY=terrain(pl.x,pl.z);pl.y+=(groundY-pl.y)*Math.min(1,dt*12);
+ if(Math.hypot(vx,vz)>1e-5)pl.face=Math.atan2(vx,vz);
+ avatar.userData.moving=Math.hypot(vx,vz)>1e-5;
+}
+function updateCamera(dt){const c=Math.cos(pl.pit),fx=Math.sin(pl.yaw),fz=Math.cos(pl.yaw),eye=pl.y+EYE,dist=pl.dist;
+ let goal,target;
+ if(overview){goal=new THREE.Vector3(radius*Math.sin(phi)*Math.sin(theta),radius*Math.cos(phi)+4,radius*Math.sin(phi)*Math.cos(theta));target=new THREE.Vector3(0,6,0);}
+ else if(dist<1){goal=new THREE.Vector3(pl.x,eye,pl.z);target=new THREE.Vector3(pl.x+fx*c*5,eye-Math.sin(pl.pit)*5,pl.z+fz*c*5);}
+ else {const x=pl.x-fx*dist*c,z=pl.z-fz*dist*c;goal=new THREE.Vector3(x,Math.max(eye+Math.sin(pl.pit)*dist,terrain(x,z)+.8),z);target=new THREE.Vector3(pl.x,pl.y+1.5,pl.z);}
+ const k=!overview&&dist<1?1:Math.min(1,dt*CAMERA_LERP);
+ camera.position.lerp(goal,k);lookTarget.lerp(target,k);camera.lookAt(lookTarget);
+}
+function drawMap(){const yaw=pl.yaw;ctx.clearRect(0,0,150,150);ctx.save();ctx.beginPath();ctx.arc(75,75,74,0,Math.PI*2);ctx.clip();ctx.fillStyle='#28473e';ctx.fillRect(0,0,150,150);
+ ctx.translate(75,75);ctx.rotate(Math.PI+yaw);ctx.translate(-pl.x*.25,-pl.z*.25);
+ ctx.fillStyle='#477f97';ctx.beginPath();ctx.arc(45*.25,-22*.25,27*.25,0,Math.PI*2);ctx.fill();
+ for(const [x,z,r] of obstacles){ctx.fillStyle='#152d29';ctx.beginPath();ctx.arc(x*.25,z*.25,r*.25,0,Math.PI*2);ctx.fill();}
+ ctx.fillStyle='#5ce6ee';ctx.fillRect(car.x*.25-2,car.z*.25-3,4,6);ctx.restore();
+ ctx.fillStyle='#ffd744';ctx.beginPath();ctx.moveTo(75,64);ctx.lineTo(68,83);ctx.lineTo(75,79);ctx.lineTo(82,83);ctx.closePath();ctx.fill();}
+let last=performance.now();function animate(now){requestAnimationFrame(animate);const dt=Math.min(MAX_DT,(now-last)/1000);last=now;t+=dt;
+ step(dt);avatar.position.set(pl.x,pl.y+(avatar.userData.moving?Math.abs(Math.sin(t*9))*.07:0),pl.z);
+ avatar.rotation.y=pl.face;avatar.visible=!driving&&(overview||pl.dist>1.5);
+ arms.forEach((a,i)=>a.rotation.x=avatar.userData.moving?Math.sin(t*9+i*Math.PI)*.55:0);
+ legs.forEach((a,i)=>a.rotation.x=avatar.userData.moving?Math.sin(t*9+(i+1)*Math.PI)*.55:0);
+ vehicleMesh.position.set(car.x,terrain(car.x,car.z),car.z);vehicleMesh.rotation.y=car.yaw;
+ updateCamera(dt);drawMap();const cbtn=document.querySelector('#carButton');cbtn.textContent=driving?'E · EXIT CAR':'E · ENTER CAR';cbtn.disabled=!driving&&Math.hypot(pl.x-car.x,pl.z-car.z)>ENTER_DIST;
+ renderer.render(scene,camera);}
+requestAnimationFrame(animate);
+</script></body></html>
